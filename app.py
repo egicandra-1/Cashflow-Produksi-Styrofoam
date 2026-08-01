@@ -55,14 +55,20 @@ if 'form_counter' not in st.session_state:
 if 'form_counter_lain' not in st.session_state:
     st.session_state.form_counter_lain = 0
 
-# Fungsi sinkronisasi cloud di latar belakang agar super instan
+# Fungsi sinkronisasi cloud di latar belakang agar super instan (Mendukung Streamlit Secrets & Credentials Lokal)
 def background_sync(df, sheet_name="Data_Nota"):
     def task():
         try:
             import gspread
             from oauth2client.service_account import ServiceAccountCredentials
             scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-            creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", scope)
+            
+            # Cek apakah menggunakan Streamlit Secrets atau file credentials.json lokal
+            if "gcp_service_account" in st.secrets:
+                creds = ServiceAccountCredentials.from_json_keyfile_dict(dict(st.secrets["gcp_service_account"]), scope)
+            else:
+                creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", scope)
+                
             client = gspread.authorize(creds)
             ss = client.open("Cashflow Styrofoam")
             try:
@@ -510,7 +516,7 @@ with menu4:
                 y_tbl = 120 * scale
                 grand_total = 0
                 box_size = 14 * scale
-                box_x_pos = img_w - margin - 30 * scale  # Posisi kotak cek di sebelah kanan
+                box_x_pos = img_w - margin - 30 * scale
 
                 # --- 2. BAGIAN PRODUKSI ---
                 subtotal_nota = 0
@@ -705,7 +711,7 @@ with menu4:
         st.info("Belum ada data transaksi untuk dibuatkan invoice.")
 
 # ==========================================
-# MENU 5: PENGATURAN
+# MENU 5: PENGATURAN (DENGAN NOTIFIKASI DI DEKAT TABEL & SLEEP)
 # ==========================================
 with menu5:
     st.header("Pengaturan Master Pekerjaan")
@@ -714,6 +720,18 @@ with menu5:
     df_pek_view = st.session_state['pengaturan_pekerjaan'].copy().reset_index(drop=True)
     df_pek_view['Harga Satuan (Rp)'] = pd.to_numeric(df_pek_view['Harga Satuan (Rp)'], errors='coerce').fillna(0)
     
+    # Area Notifikasi di dekat tabel
+    notif_area_setting = st.empty()
+    if "setting_msg" in st.session_state:
+        if st.session_state.setting_type == "success":
+            notif_area_setting.success(st.session_state.setting_msg)
+        else:
+            notif_area_setting.error(st.session_state.setting_msg)
+        time.sleep(1.5)
+        notif_area_setting.empty()
+        del st.session_state.setting_msg
+        del st.session_state.setting_type
+
     edited_pek = st.data_editor(
         df_pek_view,
         num_rows="dynamic",
@@ -729,6 +747,12 @@ with menu5:
         cleaned_pek = edited_pek[edited_pek['Jenis Pekerjaan'].astype(str).str.strip() != ""].copy()
         cleaned_pek['Harga Satuan (Rp)'] = pd.to_numeric(cleaned_pek['Harga Satuan (Rp)'], errors='coerce').fillna(0)
         
-        st.session_state['pengaturan_pekerjaan'] = cleaned_pek
-        st.success("✅ Pengaturan berhasil diperbarui!")
-        st.rerun()
+        if not cleaned_pek.empty:
+            st.session_state['pengaturan_pekerjaan'] = cleaned_pek
+            st.session_state.setting_msg = "✅ Pengaturan Master Pekerjaan berhasil diperbarui!"
+            st.session_state.setting_type = "success"
+            st.rerun()
+        else:
+            st.session_state.setting_msg = "⚠️ Gagal! Master pekerjaan tidak boleh kosong."
+            st.session_state.setting_type = "error"
+            st.rerun()
