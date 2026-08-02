@@ -418,7 +418,7 @@ with menu3:
                     notif_area_lain.success(st.session_state.notif_lain_msg)
                 else:
                     notif_area_lain.error(st.session_state.notif_lain_msg)
-                time.sleep(1.2)
+                time.sleep(3)
                 notif_area_lain.empty()
                 del st.session_state.notif_lain_msg
                 del st.session_state.notif_type_lain
@@ -442,8 +442,10 @@ with menu3:
                     st.session_state.df_lain = pd.concat([st.session_state.df_lain, baris_l], ignore_index=True)
                     
                     background_sync(st.session_state.df_lain, "Data_Pengeluaran_Lain")
-                        
-                    st.session_state.notif_lain_msg = "✅ Berhasil menyimpan transaksi lain!"
+                    
+                    # Notifikasi TERSIMPAN dengan nominal input
+                    nom_rp_str = f"Rp {nom_val:,.0f}".replace(",", ".")
+                    st.session_state.notif_lain_msg = f"✅ TERSIMPAN! Nominal: {nom_rp_str}"
                     st.session_state.notif_type_lain = "success"
                     st.rerun()
                 else:
