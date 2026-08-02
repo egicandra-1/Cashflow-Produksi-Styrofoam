@@ -159,7 +159,7 @@ with menu1:
         if "last_date_input" not in st.session_state:
             st.session_state.last_date_input = today_date
 
-        # Tampilkan Notifikasi dengan Angka Total (Sleep 3 Detik agar terbaca jelas)
+        # Tampilkan Notifikasi dengan Angka Total (Sleep 3 Detik)
         notif_area = st.empty()
         if "notif_msg" in st.session_state:
             if st.session_state.notif_type == "success":
@@ -171,48 +171,49 @@ with menu1:
             del st.session_state.notif_msg
             del st.session_state.notif_type
 
-        # --- DITARUH DI LUAR FORM AGAR UI DINAMIS ---
-        tanggal = st.date_input("Tanggal", st.session_state.last_date_input, max_value=datetime.today(), format="DD/MM/YYYY")
-        
-        st.write("")
-        st.markdown("**Status Pengiriman**")
-        status_kirim = st.radio(
-            "Pilih Status",
-            ["Diambil", "Dikirim", "Subsidi Ongkir"],
-            horizontal=True,
-            label_visibility="collapsed"
-        )
-        # --------------------------------------------
-
-        # --- FORM PENGISIAN (AMANKAN DARI SALAH KLIK & SUPPORT ENTER) ---
-        with st.form(key="form_input_nota", clear_on_submit=True):
-            st.markdown("**Rincian Pekerjaan**")
+        # Membungkus semuanya di dalam satu kotak border visual
+        with st.container(border=True):
+            tanggal = st.date_input("Tanggal", st.session_state.last_date_input, max_value=datetime.today(), format="DD/MM/YYYY")
             
-            col_h1, col_h2 = st.columns([2, 1])
-            with col_h1: st.caption("Jenis Pekerjaan")
-            with col_h2: st.caption("Jumlah (Pcs)")
-            
-            input_pcs = {}
-            for idx, row in df_pek.iterrows():
-                jenis = row['Jenis Pekerjaan']
-                harga = float(row['Harga Satuan (Rp)'])
-                
-                col_lbl, col_val = st.columns([2, 1])
-                with col_lbl:
-                    st.markdown(f"**{jenis}** *(Rp {harga:,.0f})*".replace(",", "."))
-                with col_val:
-                    input_pcs[jenis] = st.text_input(f"qty_{jenis}", value="", placeholder="0", label_visibility="collapsed")
-
-            # Kolom Nominal Ongkir hanya muncul jika Diambil/Subsidi (Berkat radio button di luar form)
-            nominal_ongkir_str = ""
-            if status_kirim in ["Diambil", "Subsidi Ongkir"]:
-                st.markdown("---")
-                label_ongkir = "Nominal Potongan Ongkir (Input Sendiri)" if status_kirim == "Diambil" else "Nominal Subsidi Ongkir (Input Sendiri)"
-                st.markdown(f"**{label_ongkir}**")
-                nominal_ongkir_str = st.text_input("ongkir_val", value="", placeholder="0", label_visibility="collapsed")
-
             st.write("")
-            btn_save = st.form_submit_button("Simpan/Save", type="primary", use_container_width=True)
+            st.markdown("**Status Pengiriman**")
+            # Status diletakkan DI LUAR form agar bisa merespons seketika saat diklik
+            status_kirim = st.radio(
+                "Pilih Status",
+                ["Diambil", "Dikirim", "Subsidi Ongkir"],
+                horizontal=True,
+                label_visibility="collapsed"
+            )
+            
+            # Form ini tak kasat mata (border=False) namun bertugas mengaktifkan tombol Enter dan memblokir klik-luar
+            with st.form(key="form_input_nota", clear_on_submit=True, border=False):
+                st.markdown("**Rincian Pekerjaan**")
+                
+                col_h1, col_h2 = st.columns([2, 1])
+                with col_h1: st.caption("Jenis Pekerjaan")
+                with col_h2: st.caption("Jumlah (Pcs)")
+                
+                input_pcs = {}
+                for idx, row in df_pek.iterrows():
+                    jenis = row['Jenis Pekerjaan']
+                    harga = float(row['Harga Satuan (Rp)'])
+                    
+                    col_lbl, col_val = st.columns([2, 1])
+                    with col_lbl:
+                        st.markdown(f"**{jenis}** *(Rp {harga:,.0f})*".replace(",", "."))
+                    with col_val:
+                        input_pcs[jenis] = st.text_input(f"qty_{jenis}", value="", placeholder="0", label_visibility="collapsed")
+
+                # Kolom Nominal Ongkir HANYA AKAN TAMPIL jika Diambil/Subsidi (Otomatis hilang jika "Dikirim")
+                nominal_ongkir_str = ""
+                if status_kirim in ["Diambil", "Subsidi Ongkir"]:
+                    st.markdown("---")
+                    label_ongkir = "Nominal Potongan Ongkir (Input Sendiri)" if status_kirim == "Diambil" else "Nominal Subsidi Ongkir (Input Sendiri)"
+                    st.markdown(f"**{label_ongkir}**")
+                    nominal_ongkir_str = st.text_input("ongkir_val", value="", placeholder="0", label_visibility="collapsed")
+
+                st.write("")
+                btn_save = st.form_submit_button("Simpan/Save", type="primary", use_container_width=True)
 
         if btn_save:
             st.session_state.last_date_input = tanggal
@@ -372,54 +373,55 @@ with menu3:
     if "last_date_lain" not in st.session_state:
         st.session_state.last_date_lain = today_date_lain
 
-    with st.form("form_lain", clear_on_submit=True):
-        col_l1, col_l2 = st.columns(2)
-        with col_l1:
-            tgl_lain = st.date_input("Tanggal Transaksi", st.session_state.last_date_lain, max_value=datetime.today(), format="DD/MM/YYYY")
-        with col_l2:
-            jenis_transaksi = st.radio("Jenis Transaksi", ["Penambahan (+)", "Pengeluaran (-)"], horizontal=True)
-            
-        ket_lain = st.text_input("Keterangan / Catatan (Contoh: Sisa Nota Tanggal Kemarin)")
-        nominal_lain_str = st.text_input("Nominal (Rp)", value="", placeholder="Contoh: 50000")
-        
-        notif_area_lain = st.empty()
-        if "notif_lain_msg" in st.session_state:
-            if st.session_state.notif_type_lain == "success":
-                notif_area_lain.success(st.session_state.notif_lain_msg)
-            else:
-                notif_area_lain.error(st.session_state.notif_lain_msg)
-            time.sleep(1.2)
-            notif_area_lain.empty()
-            del st.session_state.notif_lain_msg
-            del st.session_state.notif_type_lain
-
-        if st.form_submit_button("💾 Simpan Transaksi Lain", type="primary", use_container_width=True):
-            st.session_state.last_date_lain = tgl_lain
-            clean_lain = nominal_lain_str.strip() if nominal_lain_str else ""
-            nom_val = int(clean_lain) if clean_lain.isdigit() else 0
-            if nom_val > 0:
-                id_l = f"LAIN-{int(time.time()*1000)}"
-                tgl_str_l = tgl_lain.strftime("%Y-%m-%d")
-                nama_hari_l = HARI_INDO[tgl_lain.strftime("%A")]
-                baris_l = pd.DataFrame([{
-                    "ID Lain": id_l,
-                    "Hari": nama_hari_l,
-                    "Tanggal": tgl_str_l,
-                    "Jenis": jenis_transaksi,
-                    "Keterangan": ket_lain if ket_lain.strip() else "-",
-                    "Nominal": nom_val
-                }])
-                st.session_state.df_lain = pd.concat([st.session_state.df_lain, baris_l], ignore_index=True)
+    with st.container(border=True):
+        with st.form("form_lain", clear_on_submit=True, border=False):
+            col_l1, col_l2 = st.columns(2)
+            with col_l1:
+                tgl_lain = st.date_input("Tanggal Transaksi", st.session_state.last_date_lain, max_value=datetime.today(), format="DD/MM/YYYY")
+            with col_l2:
+                jenis_transaksi = st.radio("Jenis Transaksi", ["Penambahan (+)", "Pengeluaran (-)"], horizontal=True)
                 
-                background_sync(st.session_state.df_lain, "Data_Pengeluaran_Lain")
+            ket_lain = st.text_input("Keterangan / Catatan (Contoh: Sisa Nota Tanggal Kemarin)")
+            nominal_lain_str = st.text_input("Nominal (Rp)", value="", placeholder="Contoh: 50000")
+            
+            notif_area_lain = st.empty()
+            if "notif_lain_msg" in st.session_state:
+                if st.session_state.notif_type_lain == "success":
+                    notif_area_lain.success(st.session_state.notif_lain_msg)
+                else:
+                    notif_area_lain.error(st.session_state.notif_lain_msg)
+                time.sleep(1.2)
+                notif_area_lain.empty()
+                del st.session_state.notif_lain_msg
+                del st.session_state.notif_type_lain
+
+            if st.form_submit_button("💾 Simpan Transaksi Lain", type="primary", use_container_width=True):
+                st.session_state.last_date_lain = tgl_lain
+                clean_lain = nominal_lain_str.strip() if nominal_lain_str else ""
+                nom_val = int(clean_lain) if clean_lain.isdigit() else 0
+                if nom_val > 0:
+                    id_l = f"LAIN-{int(time.time()*1000)}"
+                    tgl_str_l = tgl_lain.strftime("%Y-%m-%d")
+                    nama_hari_l = HARI_INDO[tgl_lain.strftime("%A")]
+                    baris_l = pd.DataFrame([{
+                        "ID Lain": id_l,
+                        "Hari": nama_hari_l,
+                        "Tanggal": tgl_str_l,
+                        "Jenis": jenis_transaksi,
+                        "Keterangan": ket_lain if ket_lain.strip() else "-",
+                        "Nominal": nom_val
+                    }])
+                    st.session_state.df_lain = pd.concat([st.session_state.df_lain, baris_l], ignore_index=True)
                     
-                st.session_state.notif_lain_msg = "✅ Berhasil menyimpan transaksi lain!"
-                st.session_state.notif_type_lain = "success"
-                st.rerun()
-            else:
-                st.session_state.notif_lain_msg = "⚠️ Mohon masukkan nominal angka yang valid."
-                st.session_state.notif_type_lain = "error"
-                st.rerun()
+                    background_sync(st.session_state.df_lain, "Data_Pengeluaran_Lain")
+                        
+                    st.session_state.notif_lain_msg = "✅ Berhasil menyimpan transaksi lain!"
+                    st.session_state.notif_type_lain = "success"
+                    st.rerun()
+                else:
+                    st.session_state.notif_lain_msg = "⚠️ Mohon masukkan nominal angka yang valid."
+                    st.session_state.notif_type_lain = "error"
+                    st.rerun()
 
     st.markdown("---")
     st.subheader("Database Pengeluaran & Penambahan Lain")
