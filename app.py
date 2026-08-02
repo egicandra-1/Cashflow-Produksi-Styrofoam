@@ -134,6 +134,9 @@ if 'pengaturan_pekerjaan' not in st.session_state or st.session_state['pengatura
         'Harga Satuan (Rp)': [195, 150]
     })
 
+if 'form_counter' not in st.session_state:
+    st.session_state.form_counter = 0
+
 # ==========================================
 # PEMBUATAN TAB MENU UTAMA
 # ==========================================
@@ -146,7 +149,7 @@ menu1, menu2, menu3, menu4, menu5 = st.tabs([
 ])
 
 # ==========================================
-# MENU 1: INPUT CEPAT (DINAMIS & AMAN ENTER)
+# MENU 1: INPUT CEPAT (VISUAL KEMBALI SEPERTI SEMULA + ENTER SAVE)
 # ==========================================
 with menu1:
     st.header("Input Data Nota")
@@ -159,62 +162,62 @@ with menu1:
         if "last_date_input" not in st.session_state:
             st.session_state.last_date_input = today_date
 
-        # Tampilkan Notifikasi dengan Angka Total (Sleep 3 Detik)
-        notif_area = st.empty()
-        if "notif_msg" in st.session_state:
-            if st.session_state.notif_type == "success":
-                notif_area.success(st.session_state.notif_msg)
-            else:
-                notif_area.error(st.session_state.notif_msg)
-            time.sleep(3)
-            notif_area.empty()
-            del st.session_state.notif_msg
-            del st.session_state.notif_type
-
-        # Membungkus semuanya di dalam satu kotak border visual
         with st.container(border=True):
-            tanggal = st.date_input("Tanggal", st.session_state.last_date_input, max_value=datetime.today(), format="DD/MM/YYYY")
+            tanggal = st.date_input("Tanggal", st.session_state.last_date_input, max_value=datetime.today(), format="DD/MM/YYYY", key=f"tgl_{st.session_state.form_counter}")
             
             st.write("")
+            st.markdown("**Rincian Pekerjaan**")
+            
+            col_h1, col_h2 = st.columns([2, 1])
+            with col_h1: st.caption("Jenis Pekerjaan")
+            with col_h2: st.caption("Jumlah (Pcs)")
+            
+            input_pcs = {}
+            for idx, row in df_pek.iterrows():
+                jenis = row['Jenis Pekerjaan']
+                harga = float(row['Harga Satuan (Rp)'])
+                
+                col_lbl, col_val = st.columns([2, 1])
+                with col_lbl:
+                    st.markdown(f"**{jenis}** *(Rp {harga:,.0f})*".replace(",", "."))
+                with col_val:
+                    input_pcs[jenis] = st.text_input(f"qty_{jenis}", value="", placeholder="0", label_visibility="collapsed", key=f"qty_{jenis}_{st.session_state.form_counter}")
+
+            st.write("")
             st.markdown("**Status Pengiriman**")
-            # Status diletakkan DI LUAR form agar bisa merespons seketika saat diklik
             status_kirim = st.radio(
                 "Pilih Status",
                 ["Diambil", "Dikirim", "Subsidi Ongkir"],
                 horizontal=True,
-                label_visibility="collapsed"
+                label_visibility="collapsed",
+                key=f"status_kirim_radio_{st.session_state.form_counter}"
             )
             
-            # Form ini tak kasat mata (border=False) namun bertugas mengaktifkan tombol Enter dan memblokir klik-luar
-            with st.form(key="form_input_nota", clear_on_submit=True, border=False):
-                st.markdown("**Rincian Pekerjaan**")
-                
-                col_h1, col_h2 = st.columns([2, 1])
-                with col_h1: st.caption("Jenis Pekerjaan")
-                with col_h2: st.caption("Jumlah (Pcs)")
-                
-                input_pcs = {}
-                for idx, row in df_pek.iterrows():
-                    jenis = row['Jenis Pekerjaan']
-                    harga = float(row['Harga Satuan (Rp)'])
-                    
-                    col_lbl, col_val = st.columns([2, 1])
-                    with col_lbl:
-                        st.markdown(f"**{jenis}** *(Rp {harga:,.0f})*".replace(",", "."))
-                    with col_val:
-                        input_pcs[jenis] = st.text_input(f"qty_{jenis}", value="", placeholder="0", label_visibility="collapsed")
-
-                # Kolom Nominal Ongkir HANYA AKAN TAMPIL jika Diambil/Subsidi (Otomatis hilang jika "Dikirim")
-                nominal_ongkir_str = ""
-                if status_kirim in ["Diambil", "Subsidi Ongkir"]:
-                    st.markdown("---")
-                    label_ongkir = "Nominal Potongan Ongkir (Input Sendiri)" if status_kirim == "Diambil" else "Nominal Subsidi Ongkir (Input Sendiri)"
-                    st.markdown(f"**{label_ongkir}**")
-                    nominal_ongkir_str = st.text_input("ongkir_val", value="", placeholder="0", label_visibility="collapsed")
-
+            # Kolom Nominal Ongkir otomatis lenyap jika "Dikirim" dipilih
+            nominal_ongkir_str = ""
+            if status_kirim in ["Diambil", "Subsidi Ongkir"]:
                 st.write("")
-                btn_save = st.form_submit_button("Simpan/Save", type="primary", use_container_width=True)
+                label_ongkir = "Nominal Potongan Ongkir (Input Sendiri)" if status_kirim == "Diambil" else "Nominal Subsidi Ongkir (Input Sendiri)"
+                st.markdown(f"**{label_ongkir}**")
+                nominal_ongkir_str = st.text_input("ongkir_val", value="", placeholder="0", label_visibility="collapsed", key=f"ongkir_val_{st.session_state.form_counter}")
 
+            st.write("")
+            
+            # Notifikasi ditempatkan persis di dekat tombol Simpan/Save
+            notif_area = st.empty()
+            if "notif_msg" in st.session_state:
+                if st.session_state.notif_type == "success":
+                    notif_area.success(st.session_state.notif_msg)
+                else:
+                    notif_area.error(st.session_state.notif_msg)
+                time.sleep(3)
+                notif_area.empty()
+                del st.session_state.notif_msg
+                del st.session_state.notif_type
+
+            btn_save = st.button("Simpan/Save", type="primary", use_container_width=True)
+
+        # Proses penyimpanan Data
         if btn_save:
             st.session_state.last_date_input = tanggal
             nama_hari = HARI_INDO[tanggal.strftime("%A")]
@@ -249,7 +252,7 @@ with menu1:
             tgl_str = tanggal.strftime("%Y-%m-%d")
             
             baris_baru_list = []
-            total_semua_bersih = 0  # Variabel untuk menghitung total perhitungan
+            total_semua_bersih = 0  # Total hitungan sesaat
             
             for i, item in enumerate(pekerjaan_dikerjakan):
                 id_data = f"NOTA-{int(time.time()*1000)}-{i}"
@@ -258,7 +261,7 @@ with menu1:
                 tam_ongkir = nominal_ongkir if (status_kirim == "Subsidi Ongkir" and i == 0) else 0
                 total_bersih = item["subtotal"] - pot_ongkir + tam_ongkir
                 
-                total_semua_bersih += total_bersih # Menambahkan ke Total Notifikasi
+                total_semua_bersih += total_bersih
                 
                 baris_baru_list.append({
                     "ID Data": id_data,
@@ -276,14 +279,39 @@ with menu1:
             
             df_baru = pd.DataFrame(baris_baru_list)
             st.session_state.df_nota = pd.concat([st.session_state.df_nota, df_baru], ignore_index=True)
-            
             background_sync(st.session_state.df_nota, "Data_Nota")
             
-            # Notifikasi TERSIMPAN dengan informasi Total Rupiah
             total_rp_str = f"Rp {total_semua_bersih:,.0f}".replace(",", ".")
             st.session_state.notif_msg = f"✅ TERSIMPAN! Total Bersih: {total_rp_str}"
             st.session_state.notif_type = "success"
+            
+            st.session_state.form_counter += 1
             st.rerun()
+
+        # Injeksi Script Rahasia untuk Fitur "Enter = Save" TANPA memicu Auto-Save klik luar
+        components.html("""
+        <script>
+        const doc = window.parent.document;
+        if (!doc.getElementById('custom-enter-save-script')) {
+            doc.body.insertAdjacentHTML('beforeend', '<div id="custom-enter-save-script" style="display:none;"></div>');
+            doc.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') {
+                    const active = doc.activeElement;
+                    if (active && active.tagName === 'INPUT' && (active.type === 'text' || active.type === 'number')) {
+                        const btns = Array.from(doc.querySelectorAll('button'));
+                        const saveBtn = btns.find(b => b.innerText.trim() === 'Simpan/Save');
+                        if (saveBtn) {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            saveBtn.focus();
+                            setTimeout(() => { saveBtn.click(); }, 50);
+                        }
+                    }
+                }
+            }, true);
+        }
+        </script>
+        """, height=0, width=0)
 
 # ==========================================
 # MENU 2: DATABASE NOTA
