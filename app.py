@@ -146,7 +146,7 @@ menu1, menu2, menu3, menu4, menu5 = st.tabs([
 ])
 
 # ==========================================
-# MENU 1: INPUT CEPAT (DENGAN FORM AMAN & ENTER)
+# MENU 1: INPUT CEPAT (DINAMIS & AMAN ENTER)
 # ==========================================
 with menu1:
     st.header("Input Data Nota")
@@ -159,21 +159,33 @@ with menu1:
         if "last_date_input" not in st.session_state:
             st.session_state.last_date_input = today_date
 
+        # Tampilkan Notifikasi dengan Angka Total (Sleep 3 Detik agar terbaca jelas)
         notif_area = st.empty()
         if "notif_msg" in st.session_state:
             if st.session_state.notif_type == "success":
                 notif_area.success(st.session_state.notif_msg)
             else:
                 notif_area.error(st.session_state.notif_msg)
-            time.sleep(1.5)
+            time.sleep(3)
             notif_area.empty()
             del st.session_state.notif_msg
             del st.session_state.notif_type
 
-        # Penggunaan Form untuk mencegah data tereksekusi saat klik di luar kotak
+        # --- DITARUH DI LUAR FORM AGAR UI DINAMIS ---
+        tanggal = st.date_input("Tanggal", st.session_state.last_date_input, max_value=datetime.today(), format="DD/MM/YYYY")
+        
+        st.write("")
+        st.markdown("**Status Pengiriman**")
+        status_kirim = st.radio(
+            "Pilih Status",
+            ["Diambil", "Dikirim", "Subsidi Ongkir"],
+            horizontal=True,
+            label_visibility="collapsed"
+        )
+        # --------------------------------------------
+
+        # --- FORM PENGISIAN (AMANKAN DARI SALAH KLIK & SUPPORT ENTER) ---
         with st.form(key="form_input_nota", clear_on_submit=True):
-            tanggal = st.date_input("Tanggal", st.session_state.last_date_input, max_value=datetime.today(), format="DD/MM/YYYY")
-            
             st.markdown("**Rincian Pekerjaan**")
             
             col_h1, col_h2 = st.columns([2, 1])
@@ -191,16 +203,13 @@ with menu1:
                 with col_val:
                     input_pcs[jenis] = st.text_input(f"qty_{jenis}", value="", placeholder="0", label_visibility="collapsed")
 
-            st.markdown("**Status Pengiriman**")
-            status_kirim = st.radio(
-                "Pilih Status",
-                ["Diambil", "Dikirim", "Subsidi Ongkir"],
-                horizontal=True,
-                label_visibility="collapsed"
-            )
-            
-            st.markdown("**Nominal Potongan Ongkir / Subsidi (Input Sendiri)** *(Abaikan jika Dikirim)*")
-            nominal_ongkir_str = st.text_input("ongkir_val", value="", placeholder="0", label_visibility="collapsed")
+            # Kolom Nominal Ongkir hanya muncul jika Diambil/Subsidi (Berkat radio button di luar form)
+            nominal_ongkir_str = ""
+            if status_kirim in ["Diambil", "Subsidi Ongkir"]:
+                st.markdown("---")
+                label_ongkir = "Nominal Potongan Ongkir (Input Sendiri)" if status_kirim == "Diambil" else "Nominal Subsidi Ongkir (Input Sendiri)"
+                st.markdown(f"**{label_ongkir}**")
+                nominal_ongkir_str = st.text_input("ongkir_val", value="", placeholder="0", label_visibility="collapsed")
 
             st.write("")
             btn_save = st.form_submit_button("Simpan/Save", type="primary", use_container_width=True)
@@ -239,12 +248,16 @@ with menu1:
             tgl_str = tanggal.strftime("%Y-%m-%d")
             
             baris_baru_list = []
+            total_semua_bersih = 0  # Variabel untuk menghitung total perhitungan
+            
             for i, item in enumerate(pekerjaan_dikerjakan):
                 id_data = f"NOTA-{int(time.time()*1000)}-{i}"
                 
                 pot_ongkir = nominal_ongkir if (status_kirim == "Diambil" and i == 0) else 0
                 tam_ongkir = nominal_ongkir if (status_kirim == "Subsidi Ongkir" and i == 0) else 0
                 total_bersih = item["subtotal"] - pot_ongkir + tam_ongkir
+                
+                total_semua_bersih += total_bersih # Menambahkan ke Total Notifikasi
                 
                 baris_baru_list.append({
                     "ID Data": id_data,
@@ -265,7 +278,9 @@ with menu1:
             
             background_sync(st.session_state.df_nota, "Data_Nota")
             
-            st.session_state.notif_msg = "✅ Data Nota Berhasil Disimpan & Kolom Dikosongkan!"
+            # Notifikasi TERSIMPAN dengan informasi Total Rupiah
+            total_rp_str = f"Rp {total_semua_bersih:,.0f}".replace(",", ".")
+            st.session_state.notif_msg = f"✅ TERSIMPAN! Total Bersih: {total_rp_str}"
             st.session_state.notif_type = "success"
             st.rerun()
 
