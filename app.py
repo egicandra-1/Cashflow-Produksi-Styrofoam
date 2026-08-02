@@ -149,7 +149,7 @@ menu1, menu2, menu3, menu4, menu5 = st.tabs([
 ])
 
 # ==========================================
-# MENU 1: INPUT CEPAT (VISUAL KEMBALI SEPERTI SEMULA + ENTER SAVE)
+# MENU 1: INPUT CEPAT
 # ==========================================
 with menu1:
     st.header("Input Data Nota")
@@ -193,7 +193,6 @@ with menu1:
                 key=f"status_kirim_radio_{st.session_state.form_counter}"
             )
             
-            # Kolom Nominal Ongkir otomatis lenyap jika "Dikirim" dipilih
             nominal_ongkir_str = ""
             if status_kirim in ["Diambil", "Subsidi Ongkir"]:
                 st.write("")
@@ -203,7 +202,6 @@ with menu1:
 
             st.write("")
             
-            # Notifikasi ditempatkan persis di dekat tombol Simpan/Save
             notif_area = st.empty()
             if "notif_msg" in st.session_state:
                 if st.session_state.notif_type == "success":
@@ -217,7 +215,6 @@ with menu1:
 
             btn_save = st.button("Simpan/Save", type="primary", use_container_width=True)
 
-        # Proses penyimpanan Data
         if btn_save:
             st.session_state.last_date_input = tanggal
             nama_hari = HARI_INDO[tanggal.strftime("%A")]
@@ -252,7 +249,7 @@ with menu1:
             tgl_str = tanggal.strftime("%Y-%m-%d")
             
             baris_baru_list = []
-            total_semua_bersih = 0  # Total hitungan sesaat
+            total_semua_bersih = 0
             
             for i, item in enumerate(pekerjaan_dikerjakan):
                 id_data = f"NOTA-{int(time.time()*1000)}-{i}"
@@ -288,7 +285,6 @@ with menu1:
             st.session_state.form_counter += 1
             st.rerun()
 
-        # Injeksi Script Rahasia untuk Fitur "Enter = Save" TANPA memicu Auto-Save klik luar
         components.html("""
         <script>
         const doc = window.parent.document;
@@ -412,16 +408,29 @@ with menu3:
             ket_lain = st.text_input("Keterangan / Catatan (Contoh: Sisa Nota Tanggal Kemarin)")
             nominal_lain_str = st.text_input("Nominal (Rp)", value="", placeholder="Contoh: 50000")
             
+            # Sistem Notifikasi Instan (Tanpa Sleep / Anti Loading Lama)
             notif_area_lain = st.empty()
             if "notif_lain_msg" in st.session_state:
                 if st.session_state.notif_type_lain == "success":
                     notif_area_lain.success(st.session_state.notif_lain_msg)
                 else:
                     notif_area_lain.error(st.session_state.notif_lain_msg)
-                time.sleep(3)
-                notif_area_lain.empty()
+                
+                # Hapus state agar tidak tersangkut, tetapi notifikasi tetap terlihat sesaat
                 del st.session_state.notif_lain_msg
                 del st.session_state.notif_type_lain
+                
+                # Eksekusi JS ringan untuk menghapus pesan otomatis dalam 2.5 detik tanpa mem-freeze aplikasi
+                components.html(
+                    """<script>
+                    setTimeout(function() {
+                        const alerts = window.parent.document.querySelectorAll('[data-testid="stAlert"]');
+                        if (alerts && alerts.length > 0) {
+                            alerts[alerts.length - 1].style.display = 'none';
+                        }
+                    }, 2500);
+                    </script>""", height=0
+                )
 
             if st.form_submit_button("💾 Simpan Transaksi Lain", type="primary", use_container_width=True):
                 st.session_state.last_date_lain = tgl_lain
@@ -443,7 +452,6 @@ with menu3:
                     
                     background_sync(st.session_state.df_lain, "Data_Pengeluaran_Lain")
                     
-                    # Notifikasi TERSIMPAN dengan nominal input
                     nom_rp_str = f"Rp {nom_val:,.0f}".replace(",", ".")
                     st.session_state.notif_lain_msg = f"✅ TERSIMPAN! Nominal: {nom_rp_str}"
                     st.session_state.notif_type_lain = "success"
@@ -469,14 +477,23 @@ with menu3:
         max_tgl_l = df_lain['Date_Obj'].max()
         min_tgl_l = df_lain['Date_Obj'].min()
         
-        rentang_tgl_lain = st.date_input("Pilih Periode Tanggal", value=(min_tgl_l, max_tgl_l), max_value=datetime.today().date(), format="DD/MM/YYYY", key="periode_lain")
+        # Tambahan Filter Database Transaksi Lain
+        col_fl1, col_fl2 = st.columns([2, 1])
+        with col_fl1:
+            rentang_tgl_lain = st.date_input("Pilih Periode Tanggal", value=(min_tgl_l, max_tgl_l), max_value=datetime.today().date(), format="DD/MM/YYYY", key="periode_lain")
+        with col_fl2:
+            opsi_jenis_lain = ["Semua Transaksi", "Penambahan (+)", "Pengeluaran (-)"]
+            filter_jenis_lain = st.selectbox("🔍 Filter Transaksi:", opsi_jenis_lain, key="filter_jenis_lain")
         
         if isinstance(rentang_tgl_lain, tuple) and len(rentang_tgl_lain) == 2:
             t_mulai_l, t_selesai_l = rentang_tgl_lain
         else:
             t_mulai_l = t_selesai_l = rentang_tgl_lain[0] if isinstance(rentang_tgl_lain, tuple) else rentang_tgl_lain
 
+        # Implementasi logika filter jenis
         df_lain_tampil = df_lain[(df_lain['Date_Obj'] >= t_mulai_l) & (df_lain['Date_Obj'] <= t_selesai_l)].copy()
+        if filter_jenis_lain != "Semua Transaksi":
+            df_lain_tampil = df_lain_tampil[df_lain_tampil['Jenis'] == filter_jenis_lain]
         
         if len(df_lain_tampil) > 0:
             df_lain_tampil['Urutan_Hari'] = df_lain_tampil['Hari'].map(URUTAN_HARI).fillna(8)
@@ -520,7 +537,7 @@ with menu3:
                         st.success("✅ Data berhasil dihapus!")
                         st.rerun()
         else:
-            st.info("Tidak ada data transaksi lain pada rentang tanggal tersebut.")
+            st.info("Tidak ada data transaksi lain pada rentang tanggal atau filter tersebut.")
     else:
         st.info("Belum ada data transaksi lain yang tercatat.")
 
