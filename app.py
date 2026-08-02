@@ -52,9 +52,13 @@ st.markdown("""
 st.title("Aplikasi Cashflow Styrofoam")
 
 # ==========================================
-# FUNGSI MENARIK & MENYIMPAN DATA KE GOOGLE SHEETS
+# FUNGSI MENARIK & MENYIMPAN DATA (DILENGKAPI BACKUP LOKAL ANTI-HILANG)
 # ==========================================
 def load_cloud_data():
+    df_n = pd.DataFrame()
+    df_l = pd.DataFrame()
+    
+    # Mencoba menarik dari Cloud (Google Sheets)
     try:
         import gspread
         from oauth2client.service_account import ServiceAccountCredentials
@@ -66,23 +70,45 @@ def load_cloud_data():
             creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", scope)
         
         client = gspread.authorize(creds)
-        ss = client.open("Cashflow Styrofoam")
+        
+        # Otomatis buat file g-sheet jika terhapus/belum ada agar tidak error
+        try:
+            ss = client.open("Cashflow Styrofoam")
+        except:
+            ss = client.create("Cashflow Styrofoam")
         
         try:
             df_n = pd.DataFrame(ss.worksheet("Data_Nota").get_all_records())
         except:
-            df_n = pd.DataFrame()
+            pass
             
         try:
             df_l = pd.DataFrame(ss.worksheet("Data_Pengeluaran_Lain").get_all_records())
         except:
-            df_l = pd.DataFrame()
-            
-        return df_n, df_l
+            pass
     except Exception:
-        return pd.DataFrame(), pd.DataFrame()
+        pass
+        
+    # BACKUP LAYER: Jika gagal/kosong dari Cloud, panggil file CSV internal (Anti-hilang saat Refresh)
+    if df_n.empty and os.path.exists("backup_nota.csv"):
+        try: df_n = pd.read_csv("backup_nota.csv")
+        except: pass
+        
+    if df_l.empty and os.path.exists("backup_lain.csv"):
+        try: df_l = pd.read_csv("backup_lain.csv")
+        except: pass
+        
+    return df_n, df_l
 
 def background_sync(df, sheet_name="Data_Nota"):
+    # 1. SIMPAN KE PENYIMPANAN SERVER INTERNAL (Instan & Pasti Aman dari Refresh)
+    backup_name = "backup_nota.csv" if "Nota" in sheet_name else "backup_lain.csv"
+    try:
+        df.to_csv(backup_name, index=False)
+    except:
+        pass
+
+    # 2. SIMPAN KE CLOUD GOOGLE SHEETS (Di Latar Belakang agar tidak loading lama)
     def task():
         try:
             import gspread
@@ -95,21 +121,29 @@ def background_sync(df, sheet_name="Data_Nota"):
                 creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", scope)
                 
             client = gspread.authorize(creds)
-            ss = client.open("Cashflow Styrofoam")
+            try:
+                ss = client.open("Cashflow Styrofoam")
+            except:
+                ss = client.create("Cashflow Styrofoam")
+                
             try:
                 ws = ss.worksheet(sheet_name)
-            except gspread.exceptions.WorksheetNotFound:
+            except:
                 ws = ss.add_worksheet(title=sheet_name, rows="100", cols="15")
+                
             ws.clear()
             if not df.empty:
-                ws.append_row(df.columns.tolist())
-                ws.append_rows(df.values.tolist())
+                df_clean = df.fillna("")
+                ws.append_row(df_clean.columns.tolist())
+                ws.append_rows(df_clean.values.tolist())
         except Exception:
             pass
-    threading.Thread(target=task, daemon=True).start()
+            
+    # Menggunakan thread normal agar tidak ter-kill oleh server di tengah jalan
+    threading.Thread(target=task).start()
 
 # ==========================================
-# INISIALISASI MEMORI (TARIK DATA DARI CLOUD SAAT DIBUKA)
+# INISIALISASI MEMORI (TARIK DATA DARI CLOUD / BACKUP SAAT DIBUKA)
 # ==========================================
 if 'data_loaded' not in st.session_state:
     df_nota_cloud, df_lain_cloud = load_cloud_data()
@@ -390,7 +424,7 @@ with menu2:
         st.info("Belum ada data transaksi yang tercatat.")
 
 # ==========================================
-# MENU 3: PENGELUARAN / PENAMBAHAN LAIN (DIPERBAIKI 100% INSTAN)
+# MENU 3: PENGELUARAN / PENAMBAHAN LAIN
 # ==========================================
 with menu3:
     st.header("Pencatatan Pengeluaran / Penambahan Lain")
@@ -400,7 +434,6 @@ with menu3:
     if "last_date_lain" not in st.session_state:
         st.session_state.last_date_lain = today_date_lain
 
-    # Form bawaan Streamlit (yang menyebabkan loading lama) TELAH DIBUANG sepenuhnya
     with st.container(border=True):
         col_l1, col_l2 = st.columns(2)
         with col_l1:
@@ -411,21 +444,29 @@ with menu3:
         ket_lain = st.text_input("Keterangan / Catatan (Contoh: Sisa Nota Tanggal Kemarin)", key=f"ket_lain_{st.session_state.form_counter_lain}")
         nominal_lain_str = st.text_input("Nominal (Rp)", value="", placeholder="Contoh: 50000", key=f"nom_lain_{st.session_state.form_counter_lain}")
         
-        # Notifikasi di kembalikan posisinya persis dekat tombol dan sleep instan
         notif_area_lain = st.empty()
         if "notif_lain_msg" in st.session_state:
             if st.session_state.notif_type_lain == "success":
                 notif_area_lain.success(st.session_state.notif_lain_msg)
             else:
                 notif_area_lain.error(st.session_state.notif_lain_msg)
-            time.sleep(2)
-            notif_area_lain.empty()
+            
             del st.session_state.notif_lain_msg
             del st.session_state.notif_type_lain
+            
+            components.html(
+                """<script>
+                setTimeout(function() {
+                    const alerts = window.parent.document.querySelectorAll('[data-testid="stAlert"]');
+                    if (alerts && alerts.length > 0) {
+                        alerts[alerts.length - 1].style.display = 'none';
+                    }
+                }, 2500);
+                </script>""", height=0
+            )
 
         btn_save_lain = st.button("💾 Simpan Transaksi Lain", type="primary", use_container_width=True)
 
-    # Proses simpan langsung jalan tanpa form delay
     if btn_save_lain:
         st.session_state.last_date_lain = tgl_lain
         clean_lain = nominal_lain_str.strip() if nominal_lain_str else ""
@@ -450,7 +491,6 @@ with menu3:
             st.session_state.notif_lain_msg = f"✅ TERSIMPAN! Nominal: {nom_rp_str}"
             st.session_state.notif_type_lain = "success"
             
-            # Counter di-plus 1 untuk mereset seluruh form secara kilat
             st.session_state.form_counter_lain += 1
             st.rerun()
         else:
@@ -458,7 +498,6 @@ with menu3:
             st.session_state.notif_type_lain = "error"
             st.rerun()
 
-    # Injeksi JS Khusus Menu 3 agar Enter = Simpan seketika
     components.html("""
     <script>
     const doc = window.parent.document;
@@ -499,7 +538,6 @@ with menu3:
         max_tgl_l = df_lain['Date_Obj'].max()
         min_tgl_l = df_lain['Date_Obj'].min()
         
-        # Tambahan Filter Database Transaksi Lain (Berfungsi Penuh)
         col_fl1, col_fl2 = st.columns([2, 1])
         with col_fl1:
             rentang_tgl_lain = st.date_input("Pilih Periode Tanggal", value=(min_tgl_l, max_tgl_l), max_value=datetime.today().date(), format="DD/MM/YYYY", key="periode_lain")
@@ -512,7 +550,6 @@ with menu3:
         else:
             t_mulai_l = t_selesai_l = rentang_tgl_lain[0] if isinstance(rentang_tgl_lain, tuple) else rentang_tgl_lain
 
-        # Filter logika jenis
         df_lain_tampil = df_lain[(df_lain['Date_Obj'] >= t_mulai_l) & (df_lain['Date_Obj'] <= t_selesai_l)].copy()
         if filter_jenis_lain != "Semua Transaksi":
             df_lain_tampil = df_lain_tampil[df_lain_tampil['Jenis'] == filter_jenis_lain]
