@@ -52,13 +52,13 @@ st.markdown("""
 st.title("Aplikasi Cashflow Styrofoam")
 
 # ==========================================
-# FUNGSI MENARIK & MENYIMPAN DATA (DILENGKAPI BACKUP LOKAL ANTI-HILANG)
+# FUNGSI MENARIK & MENYIMPAN DATA (DILENGKAPI BACKUP PENGATURAN)
 # ==========================================
 def load_cloud_data():
     df_n = pd.DataFrame()
     df_l = pd.DataFrame()
+    df_p = pd.DataFrame()
     
-    # Mencoba menarik dari Cloud (Google Sheets)
     try:
         import gspread
         from oauth2client.service_account import ServiceAccountCredentials
@@ -71,7 +71,6 @@ def load_cloud_data():
         
         client = gspread.authorize(creds)
         
-        # Otomatis buat file g-sheet jika terhapus/belum ada agar tidak error
         try:
             ss = client.open("Cashflow Styrofoam")
         except:
@@ -86,10 +85,14 @@ def load_cloud_data():
             df_l = pd.DataFrame(ss.worksheet("Data_Pengeluaran_Lain").get_all_records())
         except:
             pass
+
+        try:
+            df_p = pd.DataFrame(ss.worksheet("Pengaturan").get_all_records())
+        except:
+            pass
     except Exception:
         pass
         
-    # BACKUP LAYER: Jika gagal/kosong dari Cloud, panggil file CSV internal (Anti-hilang saat Refresh)
     if df_n.empty and os.path.exists("backup_nota.csv"):
         try: df_n = pd.read_csv("backup_nota.csv")
         except: pass
@@ -97,18 +100,26 @@ def load_cloud_data():
     if df_l.empty and os.path.exists("backup_lain.csv"):
         try: df_l = pd.read_csv("backup_lain.csv")
         except: pass
+
+    if df_p.empty and os.path.exists("backup_pengaturan.csv"):
+        try: df_p = pd.read_csv("backup_pengaturan.csv")
+        except: pass
         
-    return df_n, df_l
+    return df_n, df_l, df_p
 
 def background_sync(df, sheet_name="Data_Nota"):
-    # 1. SIMPAN KE PENYIMPANAN SERVER INTERNAL (Instan & Pasti Aman dari Refresh)
-    backup_name = "backup_nota.csv" if "Nota" in sheet_name else "backup_lain.csv"
+    if "Nota" in sheet_name:
+        backup_name = "backup_nota.csv"
+    elif "Lain" in sheet_name:
+        backup_name = "backup_lain.csv"
+    else:
+        backup_name = "backup_pengaturan.csv"
+        
     try:
         df.to_csv(backup_name, index=False)
     except:
         pass
 
-    # 2. SIMPAN KE CLOUD GOOGLE SHEETS (Di Latar Belakang agar tidak loading lama)
     def task():
         try:
             import gspread
@@ -139,14 +150,13 @@ def background_sync(df, sheet_name="Data_Nota"):
         except Exception:
             pass
             
-    # Menggunakan thread normal agar tidak ter-kill oleh server di tengah jalan
     threading.Thread(target=task).start()
 
 # ==========================================
 # INISIALISASI MEMORI (TARIK DATA DARI CLOUD / BACKUP SAAT DIBUKA)
 # ==========================================
 if 'data_loaded' not in st.session_state:
-    df_nota_cloud, df_lain_cloud = load_cloud_data()
+    df_nota_cloud, df_lain_cloud, df_pek_cloud = load_cloud_data()
     
     if not df_nota_cloud.empty:
         st.session_state.df_nota = df_nota_cloud
@@ -159,10 +169,18 @@ if 'data_loaded' not in st.session_state:
         st.session_state.df_lain = df_lain_cloud
     else:
         st.session_state.df_lain = pd.DataFrame(columns=["ID Lain", "Hari", "Tanggal", "Jenis", "Keterangan", "Nominal"])
+
+    if not df_pek_cloud.empty:
+        st.session_state['pengaturan_pekerjaan'] = df_pek_cloud
+    else:
+        st.session_state['pengaturan_pekerjaan'] = pd.DataFrame({
+            'Jenis Pekerjaan': ['KUMPLIT', 'POLOS'],
+            'Harga Satuan (Rp)': [195, 150]
+        })
         
     st.session_state.data_loaded = True
 
-if 'pengaturan_pekerjaan' not in st.session_state or st.session_state['pengaturan_pekerjaan'].empty:
+if 'pengaturan_pekerjaan' not in st.session_state:
     st.session_state['pengaturan_pekerjaan'] = pd.DataFrame({
         'Jenis Pekerjaan': ['KUMPLIT', 'POLOS'],
         'Harga Satuan (Rp)': [195, 150]
@@ -922,6 +940,7 @@ with menu5:
         
         if not cleaned_pek.empty:
             st.session_state['pengaturan_pekerjaan'] = cleaned_pek
+            background_sync(cleaned_pek, "Pengaturan")
             st.session_state.setting_msg = "✅ Pengaturan Master Pekerjaan berhasil diperbarui!"
             st.session_state.setting_type = "success"
             st.rerun()
