@@ -109,7 +109,7 @@ def background_sync(df, sheet_name="Data_Nota"):
     threading.Thread(target=task, daemon=True).start()
 
 # ==========================================
-# INISIALISASI MEMORI (TARIK DATA DARI CLOUD SAAT DIBUKA)
+# INISIALISASI MEMORI & TRIGGER AUTO-SAVE
 # ==========================================
 if 'data_loaded' not in st.session_state:
     df_nota_cloud, df_lain_cloud = load_cloud_data()
@@ -140,6 +140,12 @@ if 'form_counter' not in st.session_state:
 if 'form_counter_lain' not in st.session_state:
     st.session_state.form_counter_lain = 0
 
+if 'trigger_save_nota' not in st.session_state:
+    st.session_state.trigger_save_nota = False
+
+def set_trigger_save_nota():
+    st.session_state.trigger_save_nota = True
+
 # ==========================================
 # PEMBUATAN TAB MENU UTAMA
 # ==========================================
@@ -152,7 +158,7 @@ menu1, menu2, menu3, menu4, menu5 = st.tabs([
 ])
 
 # ==========================================
-# MENU 1: INPUT CEPAT
+# MENU 1: INPUT CEPAT (DILENGKAPI ENTER UNTUK SAVE)
 # ==========================================
 with menu1:
     st.header("Input Data Nota")
@@ -183,7 +189,8 @@ with menu1:
             with col_lbl:
                 st.markdown(f"**{jenis}** *(Rp {harga:,.0f})*".replace(",", "."))
             with col_val:
-                input_pcs[jenis] = st.text_input(f"qty_{jenis}_{st.session_state.form_counter}", value="", placeholder="0", label_visibility="collapsed")
+                # Kolom input yang akan men-trigger fungsi save saat Enter ditekan
+                input_pcs[jenis] = st.text_input(f"qty_{jenis}_{st.session_state.form_counter}", value="", placeholder="0", label_visibility="collapsed", on_change=set_trigger_save_nota)
 
         st.markdown("**Status Pengiriman**")
         status_kirim = st.radio(
@@ -198,7 +205,8 @@ with menu1:
         if status_kirim in ["Diambil", "Subsidi Ongkir"]:
             label_ongkir = "Nominal Potongan Ongkir (Input Sendiri)" if status_kirim == "Diambil" else "Nominal Subsidi Ongkir (Input Sendiri)"
             st.markdown(f"**{label_ongkir}**")
-            nominal_ongkir_str = st.text_input(f"ongkir_val_{st.session_state.form_counter}", value="", placeholder="0", label_visibility="collapsed")
+            # Kolom input nominal yang akan men-trigger fungsi save saat Enter ditekan
+            nominal_ongkir_str = st.text_input(f"ongkir_val_{st.session_state.form_counter}", value="", placeholder="0", label_visibility="collapsed", on_change=set_trigger_save_nota)
 
         notif_area = st.empty()
         if "notif_msg" in st.session_state:
@@ -212,7 +220,12 @@ with menu1:
             del st.session_state.notif_type
 
         st.write("")
-        if st.button("Simpan/Save", type="primary", use_container_width=True):
+        btn_save = st.button("Simpan/Save", type="primary", use_container_width=True)
+
+        # Logika akan berjalan jika tombol diklik ATAU pengguna menekan Enter (trigger_save_nota aktif)
+        if btn_save or st.session_state.trigger_save_nota:
+            st.session_state.trigger_save_nota = False # Matikan trigger agar tidak looping
+            
             st.session_state.last_date_input = tanggal
             
             pekerjaan_dikerjakan = []
