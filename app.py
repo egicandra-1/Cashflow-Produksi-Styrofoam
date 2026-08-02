@@ -109,7 +109,7 @@ def background_sync(df, sheet_name="Data_Nota"):
     threading.Thread(target=task, daemon=True).start()
 
 # ==========================================
-# INISIALISASI MEMORI & TRIGGER AUTO-SAVE
+# INISIALISASI MEMORI (TARIK DATA DARI CLOUD SAAT DIBUKA)
 # ==========================================
 if 'data_loaded' not in st.session_state:
     df_nota_cloud, df_lain_cloud = load_cloud_data()
@@ -134,18 +134,6 @@ if 'pengaturan_pekerjaan' not in st.session_state or st.session_state['pengatura
         'Harga Satuan (Rp)': [195, 150]
     })
 
-if 'form_counter' not in st.session_state:
-    st.session_state.form_counter = 0
-
-if 'form_counter_lain' not in st.session_state:
-    st.session_state.form_counter_lain = 0
-
-if 'trigger_save_nota' not in st.session_state:
-    st.session_state.trigger_save_nota = False
-
-def set_trigger_save_nota():
-    st.session_state.trigger_save_nota = True
-
 # ==========================================
 # PEMBUATAN TAB MENU UTAMA
 # ==========================================
@@ -158,7 +146,7 @@ menu1, menu2, menu3, menu4, menu5 = st.tabs([
 ])
 
 # ==========================================
-# MENU 1: INPUT CEPAT (DILENGKAPI ENTER UNTUK SAVE)
+# MENU 1: INPUT CEPAT (DENGAN FORM AMAN & ENTER)
 # ==========================================
 with menu1:
     st.header("Input Data Nota")
@@ -171,43 +159,6 @@ with menu1:
         if "last_date_input" not in st.session_state:
             st.session_state.last_date_input = today_date
 
-        tanggal = st.date_input("Tanggal", st.session_state.last_date_input, max_value=datetime.today(), format="DD/MM/YYYY", key=f"tgl_{st.session_state.form_counter}")
-        nama_hari = HARI_INDO[tanggal.strftime("%A")]
-        
-        st.markdown("**Rincian Pekerjaan**")
-        
-        col_h1, col_h2 = st.columns([2, 1])
-        with col_h1: st.caption("Jenis Pekerjaan")
-        with col_h2: st.caption("Jumlah (Pcs)")
-        
-        input_pcs = {}
-        for idx, row in df_pek.iterrows():
-            jenis = row['Jenis Pekerjaan']
-            harga = float(row['Harga Satuan (Rp)'])
-            
-            col_lbl, col_val = st.columns([2, 1])
-            with col_lbl:
-                st.markdown(f"**{jenis}** *(Rp {harga:,.0f})*".replace(",", "."))
-            with col_val:
-                # Kolom input yang akan men-trigger fungsi save saat Enter ditekan
-                input_pcs[jenis] = st.text_input(f"qty_{jenis}_{st.session_state.form_counter}", value="", placeholder="0", label_visibility="collapsed", on_change=set_trigger_save_nota)
-
-        st.markdown("**Status Pengiriman**")
-        status_kirim = st.radio(
-            "Status Pengiriman",
-            ["Diambil", "Dikirim", "Subsidi Ongkir"],
-            horizontal=True,
-            label_visibility="collapsed",
-            key=f"status_kirim_radio_{st.session_state.form_counter}"
-        )
-        
-        nominal_ongkir_str = ""
-        if status_kirim in ["Diambil", "Subsidi Ongkir"]:
-            label_ongkir = "Nominal Potongan Ongkir (Input Sendiri)" if status_kirim == "Diambil" else "Nominal Subsidi Ongkir (Input Sendiri)"
-            st.markdown(f"**{label_ongkir}**")
-            # Kolom input nominal yang akan men-trigger fungsi save saat Enter ditekan
-            nominal_ongkir_str = st.text_input(f"ongkir_val_{st.session_state.form_counter}", value="", placeholder="0", label_visibility="collapsed", on_change=set_trigger_save_nota)
-
         notif_area = st.empty()
         if "notif_msg" in st.session_state:
             if st.session_state.notif_type == "success":
@@ -219,14 +170,44 @@ with menu1:
             del st.session_state.notif_msg
             del st.session_state.notif_type
 
-        st.write("")
-        btn_save = st.button("Simpan/Save", type="primary", use_container_width=True)
-
-        # Logika akan berjalan jika tombol diklik ATAU pengguna menekan Enter (trigger_save_nota aktif)
-        if btn_save or st.session_state.trigger_save_nota:
-            st.session_state.trigger_save_nota = False # Matikan trigger agar tidak looping
+        # Penggunaan Form untuk mencegah data tereksekusi saat klik di luar kotak
+        with st.form(key="form_input_nota", clear_on_submit=True):
+            tanggal = st.date_input("Tanggal", st.session_state.last_date_input, max_value=datetime.today(), format="DD/MM/YYYY")
             
+            st.markdown("**Rincian Pekerjaan**")
+            
+            col_h1, col_h2 = st.columns([2, 1])
+            with col_h1: st.caption("Jenis Pekerjaan")
+            with col_h2: st.caption("Jumlah (Pcs)")
+            
+            input_pcs = {}
+            for idx, row in df_pek.iterrows():
+                jenis = row['Jenis Pekerjaan']
+                harga = float(row['Harga Satuan (Rp)'])
+                
+                col_lbl, col_val = st.columns([2, 1])
+                with col_lbl:
+                    st.markdown(f"**{jenis}** *(Rp {harga:,.0f})*".replace(",", "."))
+                with col_val:
+                    input_pcs[jenis] = st.text_input(f"qty_{jenis}", value="", placeholder="0", label_visibility="collapsed")
+
+            st.markdown("**Status Pengiriman**")
+            status_kirim = st.radio(
+                "Pilih Status",
+                ["Diambil", "Dikirim", "Subsidi Ongkir"],
+                horizontal=True,
+                label_visibility="collapsed"
+            )
+            
+            st.markdown("**Nominal Potongan Ongkir / Subsidi (Input Sendiri)** *(Abaikan jika Dikirim)*")
+            nominal_ongkir_str = st.text_input("ongkir_val", value="", placeholder="0", label_visibility="collapsed")
+
+            st.write("")
+            btn_save = st.form_submit_button("Simpan/Save", type="primary", use_container_width=True)
+
+        if btn_save:
             st.session_state.last_date_input = tanggal
+            nama_hari = HARI_INDO[tanggal.strftime("%A")]
             
             pekerjaan_dikerjakan = []
             for jenis, val_str in input_pcs.items():
@@ -284,7 +265,6 @@ with menu1:
             
             background_sync(st.session_state.df_nota, "Data_Nota")
             
-            st.session_state.form_counter += 1
             st.session_state.notif_msg = "✅ Data Nota Berhasil Disimpan & Kolom Dikosongkan!"
             st.session_state.notif_type = "success"
             st.rerun()
@@ -498,7 +478,7 @@ with menu3:
         st.info("Belum ada data transaksi lain yang tercatat.")
 
 # ==========================================
-# MENU 4: CETAK INVOICE (DENGAN CHECKBOX DI SEBELAH KANAN & FONT BOLD)
+# MENU 4: CETAK INVOICE
 # ==========================================
 with menu4:
     st.header("Cetak Invoice Transaksi")
@@ -536,7 +516,6 @@ with menu4:
             if len(df_f_inv) > 0 or len(df_f_lain_inv) > 0:
                 scale = 2
                 
-                # Menggunakan font Roboto TTF yang sudah otomatis ter-download
                 try:
                     f_title = ImageFont.truetype("Roboto-Bold.ttf", 22 * scale)
                     f_section = ImageFont.truetype("Roboto-Bold.ttf", 13 * scale)
@@ -544,7 +523,6 @@ with menu4:
                     f_bold = ImageFont.truetype("Roboto-Bold.ttf", 12 * scale)
                     f_text = ImageFont.truetype("Roboto-Regular.ttf", 12 * scale)
                 except:
-                    # Ini pencegahan darurat
                     f_title = ImageFont.load_default()
                     f_section = ImageFont.load_default()
                     f_header = ImageFont.load_default()
@@ -589,7 +567,7 @@ with menu4:
                 y_tbl = 120 * scale
                 grand_total = 0
                 box_size = 14 * scale
-                box_x_pos = img_w - margin - 30 * scale  # Posisi kotak cek di sebelah kanan
+                box_x_pos = img_w - margin - 30 * scale 
 
                 # --- 2. BAGIAN PRODUKSI ---
                 subtotal_nota = 0
@@ -784,7 +762,7 @@ with menu4:
         st.info("Belum ada data transaksi untuk dibuatkan invoice.")
 
 # ==========================================
-# MENU 5: PENGATURAN (DENGAN NOTIFIKASI DI DEKAT TABEL & SLEEP)
+# MENU 5: PENGATURAN
 # ==========================================
 with menu5:
     st.header("Pengaturan Master Pekerjaan")
@@ -793,7 +771,6 @@ with menu5:
     df_pek_view = st.session_state['pengaturan_pekerjaan'].copy().reset_index(drop=True)
     df_pek_view['Harga Satuan (Rp)'] = pd.to_numeric(df_pek_view['Harga Satuan (Rp)'], errors='coerce').fillna(0)
     
-    # Area Notifikasi di dekat tabel
     notif_area_setting = st.empty()
     if "setting_msg" in st.session_state:
         if st.session_state.setting_type == "success":
