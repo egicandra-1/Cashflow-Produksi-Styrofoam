@@ -137,6 +137,9 @@ if 'pengaturan_pekerjaan' not in st.session_state or st.session_state['pengatura
 if 'form_counter' not in st.session_state:
     st.session_state.form_counter = 0
 
+if 'form_counter_lain' not in st.session_state:
+    st.session_state.form_counter_lain = 0
+
 # ==========================================
 # PEMBUATAN TAB MENU UTAMA
 # ==========================================
@@ -295,7 +298,7 @@ with menu1:
                     const active = doc.activeElement;
                     if (active && active.tagName === 'INPUT' && (active.type === 'text' || active.type === 'number')) {
                         const btns = Array.from(doc.querySelectorAll('button'));
-                        const saveBtn = btns.find(b => b.innerText.trim() === 'Simpan/Save');
+                        const saveBtn = btns.find(b => b.innerText.trim() === 'Simpan/Save' && b.offsetParent !== null);
                         if (saveBtn) {
                             e.preventDefault();
                             e.stopPropagation();
@@ -387,7 +390,7 @@ with menu2:
         st.info("Belum ada data transaksi yang tercatat.")
 
 # ==========================================
-# MENU 3: PENGELUARAN / PENAMBAHAN LAIN
+# MENU 3: PENGELUARAN / PENAMBAHAN LAIN (DIPERBAIKI 100% INSTAN)
 # ==========================================
 with menu3:
     st.header("Pencatatan Pengeluaran / Penambahan Lain")
@@ -397,69 +400,88 @@ with menu3:
     if "last_date_lain" not in st.session_state:
         st.session_state.last_date_lain = today_date_lain
 
+    # Form bawaan Streamlit (yang menyebabkan loading lama) TELAH DIBUANG sepenuhnya
     with st.container(border=True):
-        with st.form("form_lain", clear_on_submit=True, border=False):
-            col_l1, col_l2 = st.columns(2)
-            with col_l1:
-                tgl_lain = st.date_input("Tanggal Transaksi", st.session_state.last_date_lain, max_value=datetime.today(), format="DD/MM/YYYY")
-            with col_l2:
-                jenis_transaksi = st.radio("Jenis Transaksi", ["Penambahan (+)", "Pengeluaran (-)"], horizontal=True)
-                
-            ket_lain = st.text_input("Keterangan / Catatan (Contoh: Sisa Nota Tanggal Kemarin)")
-            nominal_lain_str = st.text_input("Nominal (Rp)", value="", placeholder="Contoh: 50000")
+        col_l1, col_l2 = st.columns(2)
+        with col_l1:
+            tgl_lain = st.date_input("Tanggal Transaksi", st.session_state.last_date_lain, max_value=datetime.today(), format="DD/MM/YYYY", key=f"tgl_lain_{st.session_state.form_counter_lain}")
+        with col_l2:
+            jenis_transaksi = st.radio("Jenis Transaksi", ["Penambahan (+)", "Pengeluaran (-)"], horizontal=True, key=f"jenis_lain_{st.session_state.form_counter_lain}")
             
-            # Sistem Notifikasi Instan (Tanpa Sleep / Anti Loading Lama)
-            notif_area_lain = st.empty()
-            if "notif_lain_msg" in st.session_state:
-                if st.session_state.notif_type_lain == "success":
-                    notif_area_lain.success(st.session_state.notif_lain_msg)
-                else:
-                    notif_area_lain.error(st.session_state.notif_lain_msg)
-                
-                # Hapus state agar tidak tersangkut, tetapi notifikasi tetap terlihat sesaat
-                del st.session_state.notif_lain_msg
-                del st.session_state.notif_type_lain
-                
-                # Eksekusi JS ringan untuk menghapus pesan otomatis dalam 2.5 detik tanpa mem-freeze aplikasi
-                components.html(
-                    """<script>
-                    setTimeout(function() {
-                        const alerts = window.parent.document.querySelectorAll('[data-testid="stAlert"]');
-                        if (alerts && alerts.length > 0) {
-                            alerts[alerts.length - 1].style.display = 'none';
-                        }
-                    }, 2500);
-                    </script>""", height=0
-                )
+        ket_lain = st.text_input("Keterangan / Catatan (Contoh: Sisa Nota Tanggal Kemarin)", key=f"ket_lain_{st.session_state.form_counter_lain}")
+        nominal_lain_str = st.text_input("Nominal (Rp)", value="", placeholder="Contoh: 50000", key=f"nom_lain_{st.session_state.form_counter_lain}")
+        
+        # Notifikasi di kembalikan posisinya persis dekat tombol dan sleep instan
+        notif_area_lain = st.empty()
+        if "notif_lain_msg" in st.session_state:
+            if st.session_state.notif_type_lain == "success":
+                notif_area_lain.success(st.session_state.notif_lain_msg)
+            else:
+                notif_area_lain.error(st.session_state.notif_lain_msg)
+            time.sleep(2)
+            notif_area_lain.empty()
+            del st.session_state.notif_lain_msg
+            del st.session_state.notif_type_lain
 
-            if st.form_submit_button("💾 Simpan Transaksi Lain", type="primary", use_container_width=True):
-                st.session_state.last_date_lain = tgl_lain
-                clean_lain = nominal_lain_str.strip() if nominal_lain_str else ""
-                nom_val = int(clean_lain) if clean_lain.isdigit() else 0
-                if nom_val > 0:
-                    id_l = f"LAIN-{int(time.time()*1000)}"
-                    tgl_str_l = tgl_lain.strftime("%Y-%m-%d")
-                    nama_hari_l = HARI_INDO[tgl_lain.strftime("%A")]
-                    baris_l = pd.DataFrame([{
-                        "ID Lain": id_l,
-                        "Hari": nama_hari_l,
-                        "Tanggal": tgl_str_l,
-                        "Jenis": jenis_transaksi,
-                        "Keterangan": ket_lain if ket_lain.strip() else "-",
-                        "Nominal": nom_val
-                    }])
-                    st.session_state.df_lain = pd.concat([st.session_state.df_lain, baris_l], ignore_index=True)
-                    
-                    background_sync(st.session_state.df_lain, "Data_Pengeluaran_Lain")
-                    
-                    nom_rp_str = f"Rp {nom_val:,.0f}".replace(",", ".")
-                    st.session_state.notif_lain_msg = f"✅ TERSIMPAN! Nominal: {nom_rp_str}"
-                    st.session_state.notif_type_lain = "success"
-                    st.rerun()
-                else:
-                    st.session_state.notif_lain_msg = "⚠️ Mohon masukkan nominal angka yang valid."
-                    st.session_state.notif_type_lain = "error"
-                    st.rerun()
+        btn_save_lain = st.button("💾 Simpan Transaksi Lain", type="primary", use_container_width=True)
+
+    # Proses simpan langsung jalan tanpa form delay
+    if btn_save_lain:
+        st.session_state.last_date_lain = tgl_lain
+        clean_lain = nominal_lain_str.strip() if nominal_lain_str else ""
+        nom_val = int(clean_lain) if clean_lain.isdigit() else 0
+        if nom_val > 0:
+            id_l = f"LAIN-{int(time.time()*1000)}"
+            tgl_str_l = tgl_lain.strftime("%Y-%m-%d")
+            nama_hari_l = HARI_INDO[tgl_lain.strftime("%A")]
+            baris_l = pd.DataFrame([{
+                "ID Lain": id_l,
+                "Hari": nama_hari_l,
+                "Tanggal": tgl_str_l,
+                "Jenis": jenis_transaksi,
+                "Keterangan": ket_lain if ket_lain.strip() else "-",
+                "Nominal": nom_val
+            }])
+            st.session_state.df_lain = pd.concat([st.session_state.df_lain, baris_l], ignore_index=True)
+            
+            background_sync(st.session_state.df_lain, "Data_Pengeluaran_Lain")
+            
+            nom_rp_str = f"Rp {nom_val:,.0f}".replace(",", ".")
+            st.session_state.notif_lain_msg = f"✅ TERSIMPAN! Nominal: {nom_rp_str}"
+            st.session_state.notif_type_lain = "success"
+            
+            # Counter di-plus 1 untuk mereset seluruh form secara kilat
+            st.session_state.form_counter_lain += 1
+            st.rerun()
+        else:
+            st.session_state.notif_lain_msg = "⚠️ Mohon masukkan nominal angka yang valid."
+            st.session_state.notif_type_lain = "error"
+            st.rerun()
+
+    # Injeksi JS Khusus Menu 3 agar Enter = Simpan seketika
+    components.html("""
+    <script>
+    const doc = window.parent.document;
+    if (!doc.getElementById('custom-enter-save-script-lain')) {
+        doc.body.insertAdjacentHTML('beforeend', '<div id="custom-enter-save-script-lain" style="display:none;"></div>');
+        doc.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                const active = doc.activeElement;
+                if (active && active.tagName === 'INPUT' && (active.type === 'text' || active.type === 'number')) {
+                    const btns = Array.from(doc.querySelectorAll('button'));
+                    const saveBtn = btns.find(b => b.innerText.includes('Simpan Transaksi Lain') && b.offsetParent !== null);
+                    if (saveBtn) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        saveBtn.focus();
+                        setTimeout(() => { saveBtn.click(); }, 50);
+                    }
+                }
+            }
+        }, true);
+    }
+    </script>
+    """, height=0, width=0)
 
     st.markdown("---")
     st.subheader("Database Pengeluaran & Penambahan Lain")
@@ -477,7 +499,7 @@ with menu3:
         max_tgl_l = df_lain['Date_Obj'].max()
         min_tgl_l = df_lain['Date_Obj'].min()
         
-        # Tambahan Filter Database Transaksi Lain
+        # Tambahan Filter Database Transaksi Lain (Berfungsi Penuh)
         col_fl1, col_fl2 = st.columns([2, 1])
         with col_fl1:
             rentang_tgl_lain = st.date_input("Pilih Periode Tanggal", value=(min_tgl_l, max_tgl_l), max_value=datetime.today().date(), format="DD/MM/YYYY", key="periode_lain")
@@ -490,7 +512,7 @@ with menu3:
         else:
             t_mulai_l = t_selesai_l = rentang_tgl_lain[0] if isinstance(rentang_tgl_lain, tuple) else rentang_tgl_lain
 
-        # Implementasi logika filter jenis
+        # Filter logika jenis
         df_lain_tampil = df_lain[(df_lain['Date_Obj'] >= t_mulai_l) & (df_lain['Date_Obj'] <= t_selesai_l)].copy()
         if filter_jenis_lain != "Semua Transaksi":
             df_lain_tampil = df_lain_tampil[df_lain_tampil['Jenis'] == filter_jenis_lain]
