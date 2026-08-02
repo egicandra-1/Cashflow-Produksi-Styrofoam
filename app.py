@@ -677,6 +677,15 @@ with menu4:
                 df_tambah = df_f_lain_inv[df_f_lain_inv['Jenis'].str.contains("Penambahan", na=False)] if len(df_f_lain_inv) > 0 else pd.DataFrame()
                 df_kurang = df_f_lain_inv[df_f_lain_inv['Jenis'].str.contains("Pengeluaran", na=False)] if len(df_f_lain_inv) > 0 else pd.DataFrame()
 
+                # --- SORTING DATA DARI TERLAMA KE TERBARU KHUSUS INVOICE ---
+                if not df_f_inv.empty:
+                    df_f_inv = df_f_inv.sort_values(by='Date_Obj', ascending=True)
+                if not df_tambah.empty:
+                    df_tambah = df_tambah.sort_values(by='Date_Obj', ascending=True)
+                if not df_kurang.empty:
+                    df_kurang = df_kurang.sort_values(by='Date_Obj', ascending=True)
+                # ------------------------------------------------------------
+
                 num_nota_rows = len(df_f_inv)
                 num_tambah_rows = len(df_tambah)
                 num_kurang_rows = len(df_kurang)
