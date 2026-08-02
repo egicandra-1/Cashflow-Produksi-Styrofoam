@@ -7,6 +7,8 @@ import io
 import base64
 import streamlit.components.v1 as components
 import threading
+import os
+import urllib.request
 
 # --- KAMUS HARI BAHASA INDONESIA ---
 HARI_INDO = {
@@ -16,6 +18,23 @@ HARI_INDO = {
 URUTAN_HARI = {"Senin": 1, "Selasa": 2, "Rabu": 3, "Kamis": 4, "Jumat": 5, "Sabtu": 6, "Minggu": 7}
 
 st.set_page_config(page_title="Aplikasi Cashflow Styrofoam", layout="centered", page_icon="📦")
+
+# ==========================================
+# MENGUNDUH FONT AGAR INVOICE RAPI DI CLOUD
+# ==========================================
+@st.cache_resource
+def setup_fonts():
+    fonts = {
+        "Roboto-Regular.ttf": "https://raw.githubusercontent.com/googlefonts/roboto/main/src/hinted/Roboto-Regular.ttf",
+        "Roboto-Bold.ttf": "https://raw.githubusercontent.com/googlefonts/roboto/main/src/hinted/Roboto-Bold.ttf"
+    }
+    for fname, url in fonts.items():
+        if not os.path.exists(fname):
+            try:
+                urllib.request.urlretrieve(url, fname)
+            except:
+                pass
+setup_fonts()
 
 # ==========================================
 # SUNTIKAN CSS: MEMBERSIHKAN UI & TABEL
@@ -33,29 +52,36 @@ st.markdown("""
 st.title("Aplikasi Cashflow Styrofoam")
 
 # ==========================================
-# INISIALISASI MEMORI LOKAL (ANTI-HANG)
+# FUNGSI MENARIK & MENYIMPAN DATA KE GOOGLE SHEETS
 # ==========================================
-if 'pengaturan_pekerjaan' not in st.session_state or st.session_state['pengaturan_pekerjaan'].empty:
-    st.session_state['pengaturan_pekerjaan'] = pd.DataFrame({
-        'Jenis Pekerjaan': ['KUMPLIT', 'POLOS'],
-        'Harga Satuan (Rp)': [195, 150]
-    })
+def load_cloud_data():
+    try:
+        import gspread
+        from oauth2client.service_account import ServiceAccountCredentials
+        scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+        
+        if "gcp_service_account" in st.secrets:
+            creds = ServiceAccountCredentials.from_json_keyfile_dict(dict(st.secrets["gcp_service_account"]), scope)
+        else:
+            creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", scope)
+        
+        client = gspread.authorize(creds)
+        ss = client.open("Cashflow Styrofoam")
+        
+        try:
+            df_n = pd.DataFrame(ss.worksheet("Data_Nota").get_all_records())
+        except:
+            df_n = pd.DataFrame()
+            
+        try:
+            df_l = pd.DataFrame(ss.worksheet("Data_Pengeluaran_Lain").get_all_records())
+        except:
+            df_l = pd.DataFrame()
+            
+        return df_n, df_l
+    except Exception:
+        return pd.DataFrame(), pd.DataFrame()
 
-if 'df_nota' not in st.session_state:
-    st.session_state.df_nota = pd.DataFrame(columns=[
-        "ID Data", "Hari", "Tanggal", "Jenis Pekerjaan", "Harga Satuan", "Jumlah (pcs)", "Subtotal", "Status Pengiriman", "Potongan Ongkir", "Tambahan Ongkir", "Total Bersih"
-    ])
-
-if 'df_lain' not in st.session_state:
-    st.session_state.df_lain = pd.DataFrame(columns=["ID Lain", "Hari", "Tanggal", "Jenis", "Keterangan", "Nominal"])
-
-if 'form_counter' not in st.session_state:
-    st.session_state.form_counter = 0
-
-if 'form_counter_lain' not in st.session_state:
-    st.session_state.form_counter_lain = 0
-
-# Fungsi sinkronisasi cloud di latar belakang agar super instan (Mendukung Streamlit Secrets & Credentials Lokal)
 def background_sync(df, sheet_name="Data_Nota"):
     def task():
         try:
@@ -63,7 +89,6 @@ def background_sync(df, sheet_name="Data_Nota"):
             from oauth2client.service_account import ServiceAccountCredentials
             scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
             
-            # Cek apakah menggunakan Streamlit Secrets atau file credentials.json lokal
             if "gcp_service_account" in st.secrets:
                 creds = ServiceAccountCredentials.from_json_keyfile_dict(dict(st.secrets["gcp_service_account"]), scope)
             else:
@@ -82,6 +107,38 @@ def background_sync(df, sheet_name="Data_Nota"):
         except Exception:
             pass
     threading.Thread(target=task, daemon=True).start()
+
+# ==========================================
+# INISIALISASI MEMORI (TARIK DATA DARI CLOUD SAAT DIBUKA)
+# ==========================================
+if 'data_loaded' not in st.session_state:
+    df_nota_cloud, df_lain_cloud = load_cloud_data()
+    
+    if not df_nota_cloud.empty:
+        st.session_state.df_nota = df_nota_cloud
+    else:
+        st.session_state.df_nota = pd.DataFrame(columns=[
+            "ID Data", "Hari", "Tanggal", "Jenis Pekerjaan", "Harga Satuan", "Jumlah (pcs)", "Subtotal", "Status Pengiriman", "Potongan Ongkir", "Tambahan Ongkir", "Total Bersih"
+        ])
+        
+    if not df_lain_cloud.empty:
+        st.session_state.df_lain = df_lain_cloud
+    else:
+        st.session_state.df_lain = pd.DataFrame(columns=["ID Lain", "Hari", "Tanggal", "Jenis", "Keterangan", "Nominal"])
+        
+    st.session_state.data_loaded = True
+
+if 'pengaturan_pekerjaan' not in st.session_state or st.session_state['pengaturan_pekerjaan'].empty:
+    st.session_state['pengaturan_pekerjaan'] = pd.DataFrame({
+        'Jenis Pekerjaan': ['KUMPLIT', 'POLOS'],
+        'Harga Satuan (Rp)': [195, 150]
+    })
+
+if 'form_counter' not in st.session_state:
+    st.session_state.form_counter = 0
+
+if 'form_counter_lain' not in st.session_state:
+    st.session_state.form_counter_lain = 0
 
 # ==========================================
 # PEMBUATAN TAB MENU UTAMA
@@ -428,7 +485,7 @@ with menu3:
         st.info("Belum ada data transaksi lain yang tercatat.")
 
 # ==========================================
-# MENU 4: CETAK INVOICE (DENGAN CHECKBOX DI SEBELAH KANAN)
+# MENU 4: CETAK INVOICE (DENGAN CHECKBOX DI SEBELAH KANAN & FONT BOLD)
 # ==========================================
 with menu4:
     st.header("Cetak Invoice Transaksi")
@@ -465,13 +522,16 @@ with menu4:
         if st.button("🖼️ Generate Invoice JPG Profesional", type="primary"):
             if len(df_f_inv) > 0 or len(df_f_lain_inv) > 0:
                 scale = 2
+                
+                # Menggunakan font Roboto TTF yang sudah otomatis ter-download
                 try:
-                    f_title = ImageFont.truetype("arialbd.ttf", 22 * scale)
-                    f_section = ImageFont.truetype("arialbd.ttf", 13 * scale)
-                    f_header = ImageFont.truetype("arialbd.ttf", 12 * scale)
-                    f_bold = ImageFont.truetype("arialbd.ttf", 12 * scale)
-                    f_text = ImageFont.truetype("arial.ttf", 12 * scale)
+                    f_title = ImageFont.truetype("Roboto-Bold.ttf", 22 * scale)
+                    f_section = ImageFont.truetype("Roboto-Bold.ttf", 13 * scale)
+                    f_header = ImageFont.truetype("Roboto-Bold.ttf", 12 * scale)
+                    f_bold = ImageFont.truetype("Roboto-Bold.ttf", 12 * scale)
+                    f_text = ImageFont.truetype("Roboto-Regular.ttf", 12 * scale)
                 except:
+                    # Ini pencegahan darurat
                     f_title = ImageFont.load_default()
                     f_section = ImageFont.load_default()
                     f_header = ImageFont.load_default()
@@ -516,7 +576,7 @@ with menu4:
                 y_tbl = 120 * scale
                 grand_total = 0
                 box_size = 14 * scale
-                box_x_pos = img_w - margin - 30 * scale
+                box_x_pos = img_w - margin - 30 * scale  # Posisi kotak cek di sebelah kanan
 
                 # --- 2. BAGIAN PRODUKSI ---
                 subtotal_nota = 0
@@ -685,7 +745,7 @@ with menu4:
                 byte_inv = buf_inv.getvalue()
 
                 st.markdown("---")
-                st.subheader("👁️ Preview Invoice Profesional (Checklist di Kanan)")
+                st.subheader("👁️ Preview Invoice Profesional")
                 st.image(byte_inv, width=600)
 
                 b64_inv = base64.b64encode(byte_inv).decode()
