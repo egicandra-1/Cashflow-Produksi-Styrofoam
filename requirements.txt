@@ -3,3 +3,4 @@ pandas
 Pillow
 gspread
 oauth2client
+starlette<0.38.0
